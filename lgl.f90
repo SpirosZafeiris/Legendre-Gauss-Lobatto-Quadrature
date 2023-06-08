@@ -97,32 +97,144 @@ module legendre_gauss_lobatto
       lgl_nodes = x_new(N+1:1:-1)
    end function lgl_nodes
 
-   !function gauss_legendre_nodes(N)
-   !   real(wp), parameter :: eps = 1.e-15_wp
-   !   integer, intent(in) :: N
-   !   real(wp) :: gauss_legendre_nodes(N+1)
-   !   real(wp) :: P, x_old, x_new(N+2), x, dP
-   !   integer :: i
-   !   do i=1,N+2
-   !      x_new(i) = cos((4.d0*i-1.d0)*pi/(4.d0*(n+2)+2.d0))
-   !      print *, x_new(i)
-   !   enddo
-   !   do i=1,N+1
-   !      x = 0.5_wp*(x_new(i)+x_new(i+1))
-   !      x_old = x_new(i)
-   !      do while(abs(x-x_old).gt.eps)
-   !         P  = jacobi(N,0._wp, 0._wp, x)
-   !         dP = grad_jacobi(N,0._wp, 0._wp, x)
-   !         x_old = x
-   !         x = x - P / dP
-   !      enddo
-   !      gauss_legendre_nodes(i) = x
-   !   enddo
-   !   print *, ''
-   !   do i=1,N+1
-   !      print *, gauss_legendre_nodes(i)
-   !   enddo
-   !end function gauss_legendre_nodes
+   
+   pure function GQ_nodes_weights(N)
+      real(wp), parameter :: eps = 1.e-15_wp
+      integer, intent(in) :: N
+      real(wp) :: GQ_nodes_weights(N,2)
+      integer  :: size_k, counter, kk
+      integer, allocatable :: k(:)
+      real(wp), allocatable :: theta(:), x(:), Pm2(:), Pm1(:), P(:), PP(:), PPm1(:), PPm2(:), dx(:)
+      size_k = ceiling(real(N,wp)/real(2,wp))
+      allocate(k(size_k), theta(size_k))
+      k = [(n+mod(N,2))/2:1:-1]
+      theta = pi*real(4*k-1,wp)/real(4*n+2,wp)
+      allocate(x(size_k), Pm2(size_k), Pm1(size_k), P(size_k), PP(size_k), PPm1(size_k), PPm2(size_k), dx(size_k))
+      x = (1._wp - real(N-1,wp)/real(8*N**3,wp) - 1._wp/real(384*N**4,wp)*(39._wp-28._wp/sin(theta)**2) ) * cos(theta)
+      ! Initialise:
+      Pm2 = 1._wp
+      Pm1 = x
+      PPm2 = 0._wp
+      PPm1 = 1._wp
+      dx = 1.e+14_wp
+      counter = 0
+
+      ! Loop until convergence:
+      do while ( maxval(abs(dx)) > eps .and. counter < 10 )
+         counter = counter + 1
+         do kk = 1,N-1
+            P = ((2*kk+1)*Pm1*x-kk*Pm2)/(kk+1)
+            Pm2 = Pm1
+            Pm1 = P
+            PP = ((2*kk+1)*(Pm2+x*PPm1)-kk*PPm2)/(kk+1)
+            PPm2 = PPm1
+            PPm1 = PP
+         enddo
+         ! Newton step:
+         dx = -P/PP;
+         ! Newton update:
+         x = x + dx;
+         ! Reinitialise:
+         Pm2 = 1._wp
+         Pm1 = x
+         PPm2 = 0._wp
+         PPm1 = 1._wp
+      end do
+   !
+   ! Once more for derivatives:
+   do kk = 1,N-1
+      P = ( (2*kk+1)*Pm1*x - kk*Pm2 ) / real(kk+1,wp)
+      Pm2 = Pm1
+      Pm1 = P
+      PP = ( (2*kk+1)*(Pm2+x*PPm1) - kk*PPm2 ) / real(kk+1,wp)
+      PPm2 = PPm1
+      PPm1 = PP
+   enddo
+
+   GQ_nodes_weights(:,1) = [-x(size_k:1+mod(N,2):-1) , x] !! quadrature nodes
+   GQ_nodes_weights(:,2) = [PP(size(PP):1+mod(N,2):-1) , PP]
+   GQ_nodes_weights(:,2) = 2._wp/((1._wp-GQ_nodes_weights(:,1)**2)*GQ_nodes_weights(:,2)**2) !! quadrature weights
+   end function GQ_nodes_weights
+
+   function lgl_nodes_weights(N)
+      integer, intent(in) :: N
+      real(wp) :: lgl_nodes_weights(N,2), buf(N-2,2)
+      buf = gq_nodes_weights(N-2)
+      lgl_nodes_weights(:,1) = [-1._wp, buf(:,1), 1._wp]
+   end function lgl_nodes_weights
+
+   function lobpts(N)
+      integer, intent(in) :: N
+      real(wp) :: lobpts(N,2), buf(N-2,2)
+      buf = jacpts(N-2, 1._wp, 1._wp)
+      lobpts(1,1) = -1._wp
+      lobpts(2:N-1,1) = buf(:,1)
+      lobpts(N,1) = 1._wp
+      lobpts(:,2) = buf(:,2)
+      !lobpts(:,2) = lobpts(:,2) / (1._wp - lobpts(:,1)**2)!   w = w./(1-x.^2).';
+      !lobpts([1,n],2) =2/(N*(N - 1))
+   end function lobpts
+
+   function jacpts(N, alpha, beta)
+      implicit none
+      integer, intent(in) :: N
+      real(wp), intent(in) :: alpha, beta
+      real(wp) :: xw1(N,2), xw2(N,2), jacpts(N,2)
+      integer :: idx(N)
+      xw1 = jacpts_main(N, alpha, beta, .true.)
+      xw2 = jacpts_main(N, beta, alpha, .false.)
+      xw1(:,1) = xw1(N:1:-1,1)
+      xw1(:,2) = xw1(N:1:-1,2)
+      jacpts = 0._wp
+      jacpts(:,1) = xw1(:,1) - xw2(:,1)
+      jacpts(:,2) = xw1(:,2) + xw2(:,2)
+      idx = argsort(N, jacpts(1:N,1))
+      jacpts(:,1) = jacpts(idx, 1)
+      jacpts(:,2) = jacpts(idx, 2)
+      jacpts(:,2) = 1._wp/((1._wp-jacpts(:,1)**2)*jacpts(:,2)**2) !Quadrature weights
+   end function jacpts
+
+   function jacpts_main(N, a, b, flag)
+      implicit none
+      real(wp), parameter   :: eps = 1.e-15_wp
+      integer, intent(in)   :: N
+      real(wp), intent(in)  :: a, b
+      logical, intent(in)   :: flag
+      integer, allocatable  :: r(:)
+      real(wp), allocatable :: C(:), T(:), x(:), dx(:), P(:), PP(:)
+      real(wp) :: jacpts_main(N,2)
+      integer :: size_r, l
+      jacpts_main = 0._wp
+      !%REC_MAIN   Jacobi polynomial recurrence relation.
+
+      !% Asymptotic formula (WKB) - only positive x.
+      if (flag) then
+         size_r = ceiling(real(N,wp)/real(2,wp))
+      else
+         size_r = floor(real(n,wp)/real(2,wp))
+      endif
+      allocate(x(size_r), r(size_r), c(size_r), T(size_r), dx(size_r), P(size_r), PP(size_r))
+      r = [size_r:1:-1]
+      C = (real(2*r,wp)+a-0.5_wp)*pi/(real(2*n,wp)+a+b+1._wp);
+      T = C + 1._wp/(real(2*n,wp)+a+b+1._wp)**2 * ((0.25_wp-a**2)*cotan(0.5_wp*C) - (0.25_wp-b**2)*tan(0.5_wp*C))
+      x = cos(T)
+   
+      !% Initialise:
+      dx = 1.e+12_wp; 
+      l = 0;
+      !% Loop until convergence:
+      do while ( (maxval(abs(dx)) > eps) .and. (l < 10) )
+         l = l + 1;
+         ![P, PP] = eval_Jac(x, n, a, b);
+         P  = jacobi(N, a, b, x)
+         PP = grad_jacobi(N, a, b, x)
+         dx = -P/PP
+         x = x + dx
+      enddo
+      jacpts_main(1:size_r,1) = x
+      jacpts_main(1:size_r,2) = grad_jacobi(N, a, b, x)
+   end function jacpts_main
+
 
    !! calculates the Legendre-Gauss-Lobatto weights, used in the quadrature
    !! N :: is the degree of the corresponding polynomial
@@ -171,17 +283,23 @@ module legendre_gauss_lobatto
       implicit none
       integer, intent(in) :: N !! N >= 8 must
       real(wp), intent(in):: u(N+1)
-      real(wp) :: f(N+1), pade_reconstruction(N+1), cites(N+1), gauss_nodes(N+1)
-      real(wp), allocatable :: A(:,:), rhs(:), lhs(:,:), q_tilde(:), Q(:), p_tilde(:)
+      real(wp) :: f(N+1), pade_reconstruction(N+1), cites(N+1), gauss_nodes(N+1), gauss_weights(N+1)
+      real(wp), allocatable :: A(:,:), rhs(:), lhs(:,:), q_tilde(:), Q(:), p_tilde(:), fbuf2(:,:)
       integer :: M, L, i, j, cut
       pade_reconstruction = 0._wp
       cites = lgl_nodes(N)
       M = N - 5
       L = N - 6
       print *, N
-      gauss_nodes = lgl_nodes(N)
+      allocate(fbuf2(N+1,2))
+      fbuf2 = gq_nodes_weights(N+1)
+      gauss_nodes = fbuf2(:,1)
+      gauss_weights = fbuf2(:,2)
+      fbuf2 = lobpts(N+1)
       print *, gauss_nodes
-      stop
+      print *, ''
+      print *, fbuf2
+      stop 'here'
       print *, M, L, N
       allocate(A(L,L+1))
       do i=M+1,M+L
@@ -242,6 +360,54 @@ module legendre_gauss_lobatto
          STOP
       END IF
    endsubroutine my_dgesv
+
+   subroutine my_dgeev(N, A, L)
+      implicit none
+      external dgeev
+      integer, intent(in) :: N
+      double precision, intent(in) :: A(N,N)
+      double precision, intent(out):: L(N)
+      double precision :: VL(N,N), VR(N,N), WR(N), WI(N), WORK(1000)
+      integer :: LDA, LDVL, LDVR, LWMAX, info, lwork
+      LDA = N; LDVL = N; LDVR = N
+      LWMAX = 1000
+     call dgeev( 'Vectors', 'Vectors', N, A, LDA, WR, WI, VL, LDVL, VR, LDVR, WORK, LWORK, INFO )
+     L = WR
+    end subroutine my_dgeev
+
+    function argsort(N, x, limit)
+       implicit none
+          !! input size of array, number of elements in the array to sort thEnd <= N+1
+       real(wp), parameter :: tol = 1e-15
+       integer , intent(in):: N
+       integer , intent(in), optional :: limit
+       real(wp), intent(in):: x(N) !! input array
+       integer  :: argsort(N) !! output array of sorted argsortices
+       real(wp) :: tmp, y(N)
+       integer  :: i,j,tmpi, thEnd
+       if (.not.present(limit)) then
+          thEnd = N+1
+       else
+          thEnd = limit
+       endif
+       Y = X
+       do i=1,N
+          argsort(i) = i
+       enddo
+       do i=1,N-1
+          do j=i+1,N
+             if ((Y(j)-Y(i)).lt.(-tol)) then
+                tmpi = argsort(j)  !
+                argsort(j) = argsort(i)! swap indices
+                argsort(i) = tmpi  !
+                tmp  = Y(j)    !
+                Y(j) = Y(i)    ! swap values
+                Y(i) = tmp     !
+             endif
+          enddo
+          if (i.eq.thEnd) exit
+       enddo
+    end function argsort
 end module legendre_gauss_lobatto
 
 

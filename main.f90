@@ -19,8 +19,8 @@ program main
    x_a = -1.d0; x_b = 2.d0
    cites_physical = x_a + 0.5d0*(x_b-x_a) * (cites+1.d0)
    fa = sin(cites)
-   pade = pade_reconstruction(degree-1, fa)
-   !num_integral = lgl_quadrature(N=degree, f=fa, a=-1.d0, b=2.d0)
-   !integral = exp(2.d0)-exp(-1.d0)
+   pade = pade_reconstruction(degree, fa)
+   num_integral = lgl_quadrature(N=degree, f=fa, a=-1.d0, b=2.d0)
+   integral = exp(2.d0)-exp(-1.d0)
    !write(*,'(a,E15.5)') 'Numerical Integration error : ', abs(num_integral - integral)
 end program main
