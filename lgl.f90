@@ -58,7 +58,8 @@ module legendre_gauss_lobatto
       if (N.eq.0) then
          grad_jacobi = 0._wp
       else
-         grad_jacobi = Jacobi(N-1,alpha+1._wp, beta+1._wp, x)
+         grad_jacobi = gamma(alpha+beta+N+2) / (2*gamma(alpha+beta+N+1)) * &
+                       Jacobi(N-1,alpha+1._wp, beta+1._wp, x)
       endif
    end function grad_jacobi
 
@@ -95,6 +96,33 @@ module legendre_gauss_lobatto
       enddo
       lgl_nodes = x_new(N+1:1:-1)
    end function lgl_nodes
+
+   !function gauss_legendre_nodes(N)
+   !   real(wp), parameter :: eps = 1.e-15_wp
+   !   integer, intent(in) :: N
+   !   real(wp) :: gauss_legendre_nodes(N+1)
+   !   real(wp) :: P, x_old, x_new(N+2), x, dP
+   !   integer :: i
+   !   do i=1,N+2
+   !      x_new(i) = cos((4.d0*i-1.d0)*pi/(4.d0*(n+2)+2.d0))
+   !      print *, x_new(i)
+   !   enddo
+   !   do i=1,N+1
+   !      x = 0.5_wp*(x_new(i)+x_new(i+1))
+   !      x_old = x_new(i)
+   !      do while(abs(x-x_old).gt.eps)
+   !         P  = jacobi(N,0._wp, 0._wp, x)
+   !         dP = grad_jacobi(N,0._wp, 0._wp, x)
+   !         x_old = x
+   !         x = x - P / dP
+   !      enddo
+   !      gauss_legendre_nodes(i) = x
+   !   enddo
+   !   print *, ''
+   !   do i=1,N+1
+   !      print *, gauss_legendre_nodes(i)
+   !   enddo
+   !end function gauss_legendre_nodes
 
    !! calculates the Legendre-Gauss-Lobatto weights, used in the quadrature
    !! N :: is the degree of the corresponding polynomial
@@ -138,6 +166,82 @@ module legendre_gauss_lobatto
           linspace(i) = junk
       enddo
    end function linspace
+
+   function pade_reconstruction(N, u)
+      implicit none
+      integer, intent(in) :: N !! N >= 8 must
+      real(wp), intent(in):: u(N+1)
+      real(wp) :: f(N+1), pade_reconstruction(N+1), cites(N+1), gauss_nodes(N+1)
+      real(wp), allocatable :: A(:,:), rhs(:), lhs(:,:), q_tilde(:), Q(:), p_tilde(:)
+      integer :: M, L, i, j, cut
+      pade_reconstruction = 0._wp
+      cites = lgl_nodes(N)
+      M = N - 5
+      L = N - 6
+      print *, N
+      gauss_nodes = lgl_nodes(N)
+      print *, gauss_nodes
+      stop
+      print *, M, L, N
+      allocate(A(L,L+1))
+      do i=M+1,M+L
+         do j=0,L
+            f = u * cites**j * jacobi_normalized(i, 0._wp, 0._wp, cites)
+            A(i-M,j+1) = lgl_quadrature(N, f, -1._wp, 1._wp)
+         enddo
+      enddo
+      allocate(rhs(L))
+      lhs = -1e+2-1e+23
+      cut = 3
+      rhs = -A(:,cut)
+      allocate(lhs(L,L))
+      lhs(:,:cut-1) = A(:,:cut-1)
+      lhs(:,cut:) = A(:,cut+1:)
+      deallocate(A)
+      call my_dgesv(L, lhs, rhs)
+      allocate(q_tilde(L+1))
+      q_tilde(1) = 1._wp
+      q_tilde(2:L+1) = rhs
+      deallocate(lhs, rhs)
+      !print *, q_tilde
+      allocate(Q(N+1))
+      ! calculate Q
+      do i=1,N ! for every calculation point
+         Q(i) = 0._wp
+         do j=0,L ! add every monomial of the expansion
+            Q(i) = Q(i) + q_tilde(j+1) * cites(i)**j
+         enddo
+      enddo
+      print *, Q
+      allocate(p_tilde(M+1))
+      print *, M, L, N
+      error stop 'here'
+      !do i=0,M
+      !   f = Q * u * jacobi_normalized(i, 0._wp, 0._wp, cites)
+      !   p_dilde(i+1) = lgl_quadrature(
+      !enddo
+
+
+
+
+
+   end function pade_reconstruction
+
+   subroutine my_dgesv(N,A, B)
+      implicit none
+      external dgesv
+      integer, intent(in)             :: N
+      double precision, intent(in)    :: A(N,N)
+      double precision, intent(inout) :: B(N)
+      integer :: ipiv(n), info
+      call DGESV( N, 1, A, N, ipiv, B, N, INFO )
+      IF( INFO.GT.0 ) THEN
+         WRITE(*,*)'The diagonal element of the triangular factor of A,'
+         WRITE(*,*)'U(',INFO,',',INFO,') is zero, so that'
+         WRITE(*,*)'A is singular; the solution could not be computed.'
+         STOP
+      END IF
+   endsubroutine my_dgesv
 end module legendre_gauss_lobatto
 
 
