@@ -58,7 +58,8 @@ module legendre_gauss_lobatto
       if (N.eq.0) then
          grad_jacobi = 0._wp
       else
-         grad_jacobi = Jacobi(N-1,alpha+1._wp, beta+1._wp, x)
+         grad_jacobi = gamma(alpha+beta+N+2) / (2*gamma(alpha+beta+N+1)) * &
+                       Jacobi(N-1,alpha+1._wp, beta+1._wp, x)
       endif
    end function grad_jacobi
 
