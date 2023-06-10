@@ -4,7 +4,8 @@ program main
    integer, parameter :: N = 101
    integer, parameter :: degree = 6
    double precision :: x(N), y(101), cites(degree),weights(degree),fa(degree), num_integral,integral
-   double precision :: cites_physical(degree), x_a, x_b
+   double precision :: cites_physical(degree), x_a, x_b, buffer(degree,2)
+
    !! test functions
    x = linspace(N=N, a=0.d0, b=1.d0)
    y = jacobi(N=degree, alpha=1.d0, beta=1.d0, x=x)
@@ -12,8 +13,9 @@ program main
    y = grad_jacobi(N=degree, alpha=1.d0, beta=1.d0, x=x)
    y = grad_jacobi_normalized(N=degree, alpha=1.d0, beta=1.d0, x=x)
 
-   cites = lgl_nodes(degree-1)
-   weights = lgl_weights(degree)
+   buffer = LGL_nodes_weights(degree)
+   cites = buffer(:,1)
+   weights = buffer(:,2)
    
    !! test numerical integration 
    x_a = -1.d0; x_b = 2.d0

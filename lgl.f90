@@ -75,55 +75,151 @@ module legendre_gauss_lobatto
       endif
    end function grad_jacobi_normalized
 
-   !! calculates the Legendre-Gauss-Lobatto cites, used in the quadrature
-   !! input is the order of polynomial, the output is of size = order + 1 = N + 1
-   pure function lgl_nodes(N)
-      real(wp), parameter :: eps = 1.e-15_wp
-      integer, intent(in) :: N
-      real(wp) :: lgl_nodes(N+1)
-      real(wp) :: P(N+1,N+1), x_old(N+1), x_new(N+1)
-      integer  :: i
-      x_new = cos(pi*linspace(N+1, 0._wp, real(N,wp)) / real(N,wp))
-      P = 0._wp; x_old = 2._wp
-      do while (maxval(abs(x_new-x_old)).gt.eps)
-         x_old = x_new
-         P(:,1) = 1._wp
-         P(:,2) = x_new
-         do i=3,N+1
-            P(:,i) = ( (2*i-3)*x_new*P(:,i-1) - (i-2)*P(:,i-2) ) / (i-1)
-         enddo
-         x_new = x_old - ( x_new*P(:,N+1)-P(:,N) ) / ( (N+1)*P(:,N+1) );
-      enddo
-      lgl_nodes = x_new(N+1:1:-1)
-   end function lgl_nodes
-
-   !! calculates the Legendre-Gauss-Lobatto weights, used in the quadrature
-   !! N :: is the degree of the corresponding polynomial
-   !! For example : 
-   !! N = 3 are the interpolation points for a polynomial of order = 2, needs N = 3 coefficients
-   pure function lgl_weights(N)
-      implicit none
-      integer, intent(in) :: N
-      integer  :: j
-      real(wp) :: lgl_weights(N), x_lgl(N)
-      x_lgl = lgl_nodes(N-1)
-      lgl_weights(1) = -1._wp
-      lgl_weights(N) = 1._wp
-      do j=2,N-1
-         lgl_weights(j) = 2._wp / (real(n*(n-1),wp) * Jacobi(N-1,0._wp, 0._wp, x_lgl(j))**2)
-      enddo
-   end function lgl_weights
-
    !! calculates numerical integration from N number of samples of f(x)
    !! integrates exactly a polynomial of order 2*N-3
-   pure function lgl_quadrature(N, f, a, b)
+   pure function LGL_quadrature(N, f, a, b)
       integer, intent(in) :: N
       real(wp), intent(in) :: f(N), a, b
       real(wp) :: lgl_quadrature, weights(N)
-      weights = lgl_weights(N)
+      real(wp) :: buf(N,2)
+      buf = LGL_nodes_weights(N)
+      weights = buf(:,2)
       lgl_quadrature = dot_product(weights(2:N-1), f(2:N-1)) + 2._wp/real(n,wp)/real(n-1,wp)*(f(1)+f(N))
       lgl_quadrature = 0.5_wp*(b-a)*lgl_quadrature
-   end function lgl_quadrature
+   end function LGL_quadrature
+
+   pure function GQ_nodes_weights(N)
+      real(wp), parameter :: eps = 1.e-15_wp
+      integer, intent(in) :: N
+      real(wp) :: GQ_nodes_weights(N,2)
+      integer  :: size_k, counter, kk
+      integer, allocatable :: k(:)
+      real(wp), allocatable :: theta(:), x(:), Pm2(:), Pm1(:), P(:), PP(:), PPm1(:), PPm2(:), dx(:)
+      size_k = ceiling(real(N,wp)/real(2,wp))
+      allocate(k(size_k), theta(size_k))
+      k = [(n+mod(N,2))/2:1:-1]
+      theta = pi*real(4*k-1,wp)/real(4*n+2,wp)
+      allocate(x(size_k), Pm2(size_k), Pm1(size_k), P(size_k), PP(size_k), PPm1(size_k), PPm2(size_k), dx(size_k))
+      x = (1._wp - real(N-1,wp)/real(8*N**3,wp) - 1._wp/real(384*N**4,wp)*(39._wp-28._wp/sin(theta)**2) ) * cos(theta)
+      ! Initialise:
+      Pm2 = 1._wp
+      Pm1 = x
+      PPm2 = 0._wp
+      PPm1 = 1._wp
+      dx = 1.e+14_wp
+      counter = 0
+
+      ! Loop until convergence:
+      do while ( maxval(abs(dx)) > eps .and. counter < 10 )
+         counter = counter + 1
+         do kk = 1,N-1
+            P = ((2*kk+1)*Pm1*x-kk*Pm2)/(kk+1)
+            Pm2 = Pm1
+            Pm1 = P
+            PP = ((2*kk+1)*(Pm2+x*PPm1)-kk*PPm2)/(kk+1)
+            PPm2 = PPm1
+            PPm1 = PP
+         enddo
+         ! Newton step:
+         dx = -P/PP;
+         ! Newton update:
+         x = x + dx;
+         ! Reinitialise:
+         Pm2 = 1._wp
+         Pm1 = x
+         PPm2 = 0._wp
+         PPm1 = 1._wp
+      end do
+   !
+   ! Once more for derivatives:
+   do kk = 1,N-1
+      P = ( (2*kk+1)*Pm1*x - kk*Pm2 ) / real(kk+1,wp)
+      Pm2 = Pm1
+      Pm1 = P
+      PP = ( (2*kk+1)*(Pm2+x*PPm1) - kk*PPm2 ) / real(kk+1,wp)
+      PPm2 = PPm1
+      PPm1 = PP
+   enddo
+
+   GQ_nodes_weights(:,1) = [-x(size_k:1+mod(N,2):-1) , x] !! quadrature nodes
+   GQ_nodes_weights(:,2) = [PP(size(PP):1+mod(N,2):-1) , PP]
+   GQ_nodes_weights(:,2) = 2._wp/((1._wp-GQ_nodes_weights(:,1)**2)*GQ_nodes_weights(:,2)**2) !! quadrature weights
+   end function GQ_nodes_weights
+
+   pure function jacpts(N, alpha, beta)
+      implicit none
+      integer, intent(in) :: N
+      real(wp), intent(in) :: alpha, beta
+      real(wp) :: xw1(N,2), xw2(N,2), jacpts(N,2)
+      integer :: idx(N)
+      xw1 = jacpts_main(N, alpha, beta, .true.)
+      xw2 = jacpts_main(N, beta, alpha, .false.)
+      xw1(:,1) = xw1(N:1:-1,1)
+      xw1(:,2) = xw1(N:1:-1,2)
+      jacpts = 0._wp
+      jacpts(:,1) = xw1(:,1) - xw2(:,1)
+      jacpts(:,2) = xw1(:,2) + xw2(:,2)
+      idx = argsort(N, jacpts(1:N,1))
+      jacpts(:,1) = jacpts(idx, 1)
+      jacpts(:,2) = jacpts(idx, 2)
+      jacpts(:,2) = 1._wp/((1._wp-jacpts(:,1)**2)*jacpts(:,2)**2) !Quadrature weights
+   end function jacpts
+
+   pure function jacpts_main(N, a, b, flag)
+      implicit none
+      real(wp), parameter   :: eps = 1.e-15_wp
+      integer, intent(in)   :: N
+      real(wp), intent(in)  :: a, b
+      logical, intent(in)   :: flag
+      integer, allocatable  :: r(:)
+      real(wp), allocatable :: C(:), T(:), x(:), dx(:), P(:), PP(:)
+      real(wp) :: jacpts_main(N,2)
+      integer :: size_r, l
+      jacpts_main = 0._wp
+      !%REC_MAIN   Jacobi polynomial recurrence relation.
+
+      !% Asymptotic formula (WKB) - only positive x.
+      if (flag) then
+         size_r = ceiling(real(N,wp)/real(2,wp))
+      else
+         size_r = floor(real(n,wp)/real(2,wp))
+      endif
+      allocate(x(size_r), r(size_r), c(size_r), T(size_r), dx(size_r), P(size_r), PP(size_r))
+      r = [size_r:1:-1]
+      C = (real(2*r,wp)+a-0.5_wp)*pi/(real(2*n,wp)+a+b+1._wp);
+      T = C + 1._wp/(real(2*n,wp)+a+b+1._wp)**2 * ((0.25_wp-a**2)*cotan(0.5_wp*C) - (0.25_wp-b**2)*tan(0.5_wp*C))
+      x = cos(T)
+   
+      !% Initialise:
+      dx = 1.e+12_wp; 
+      l = 0;
+      !% Loop until convergence:
+      do while ( (maxval(abs(dx)) > eps) .and. (l < 10) )
+         l = l + 1;
+         ![P, PP] = eval_Jac(x, n, a, b);
+         P  = jacobi(N, a, b, x)
+         PP = grad_jacobi(N, a, b, x)
+         dx = -P/PP
+         x = x + dx
+      enddo
+      jacpts_main(1:size_r,1) = x
+      jacpts_main(1:size_r,2) = grad_jacobi(N, a, b, x)
+   end function jacpts_main
+
+   pure function LGL_nodes_weights(N)
+      integer, intent(in) :: N
+      real(wp) :: LGL_nodes_weights(N,2), buf(N-2,2), tmp
+      buf = jacpts(N-2, 1._wp, 1._wp)
+      LGL_nodes_weights(1,1) = -1._wp
+      LGL_nodes_weights(2:N-1,1) = buf(:,1)
+      LGL_nodes_weights(N,1) = 1._wp
+      LGL_nodes_weights(:,2) = buf(:,2)
+      tmp = 2._wp / real(n*(n-1),wp)
+      LGL_nodes_weights([1,N],2) = tmp
+      do j=2,N-1
+         LGL_nodes_weights(j,2) = tmp / (Jacobi(N-1,0._wp, 0._wp, LGL_nodes_weights(j,1))**2)
+      enddo
+   end function LGL_nodes_weights
 
    !! auxiliary routine, needed for the initial guess of lgl nodes
    pure function linspace(N, a, b)
@@ -139,6 +235,40 @@ module legendre_gauss_lobatto
           linspace(i) = junk
       enddo
    end function linspace
+
+   pure function argsort(N, x, limit)
+      implicit none
+         !! input size of array, number of elements in the array to sort thEnd <= N+1
+      real(wp), parameter :: tol = 1e-15
+      integer , intent(in):: N
+      integer , intent(in), optional :: limit
+      real(wp), intent(in):: x(N) !! input array
+      integer  :: argsort(N) !! output array of sorted argsortices
+      real(wp) :: tmp, y(N)
+      integer  :: i,j,tmpi, thEnd
+      if (.not.present(limit)) then
+         thEnd = N+1
+      else
+         thEnd = limit
+      endif
+      Y = X
+      do i=1,N
+         argsort(i) = i
+      enddo
+      do i=1,N-1
+         do j=i+1,N
+            if ((Y(j)-Y(i)).lt.(-tol)) then
+               tmpi = argsort(j)  !
+               argsort(j) = argsort(i)! swap indices
+               argsort(i) = tmpi  !
+               tmp  = Y(j)    !
+               Y(j) = Y(i)    ! swap values
+               Y(i) = tmp     !
+            endif
+         enddo
+         if (i.eq.thEnd) exit
+      enddo
+   end function argsort
 end module legendre_gauss_lobatto
 
 
