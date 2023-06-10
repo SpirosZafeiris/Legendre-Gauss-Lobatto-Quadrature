@@ -75,29 +75,19 @@ module legendre_gauss_lobatto
       endif
    end function grad_jacobi_normalized
 
-   !! calculates the Legendre-Gauss-Lobatto cites, used in the quadrature
-   !! input is the order of polynomial, the output is of size = order + 1 = N + 1
-   pure function lgl_nodes(N)
-      real(wp), parameter :: eps = 1.e-15_wp
+   !! calculates numerical integration from N number of samples of f(x)
+   !! integrates exactly a polynomial of order 2*N-3
+   pure function LGL_quadrature(N, f, a, b)
       integer, intent(in) :: N
-      real(wp) :: lgl_nodes(N+1)
-      real(wp) :: P(N+1,N+1), x_old(N+1), x_new(N+1)
-      integer  :: i
-      x_new = cos(pi*linspace(N+1, 0._wp, real(N,wp)) / real(N,wp))
-      P = 0._wp; x_old = 2._wp
-      do while (maxval(abs(x_new-x_old)).gt.eps)
-         x_old = x_new
-         P(:,1) = 1._wp
-         P(:,2) = x_new
-         do i=3,N+1
-            P(:,i) = ( (2*i-3)*x_new*P(:,i-1) - (i-2)*P(:,i-2) ) / (i-1)
-         enddo
-         x_new = x_old - ( x_new*P(:,N+1)-P(:,N) ) / ( (N+1)*P(:,N+1) );
-      enddo
-      lgl_nodes = x_new(N+1:1:-1)
-   end function lgl_nodes
+      real(wp), intent(in) :: f(N), a, b
+      real(wp) :: lgl_quadrature, weights(N)
+      real(wp) :: buf(N,2)
+      buf = LGL_nodes_weights(N)
+      weights = buf(:,2)
+      lgl_quadrature = dot_product(weights(2:N-1), f(2:N-1)) + 2._wp/real(n,wp)/real(n-1,wp)*(f(1)+f(N))
+      lgl_quadrature = 0.5_wp*(b-a)*lgl_quadrature
+   end function LGL_quadrature
 
-   
    pure function GQ_nodes_weights(N)
       real(wp), parameter :: eps = 1.e-15_wp
       integer, intent(in) :: N
@@ -156,26 +146,7 @@ module legendre_gauss_lobatto
    GQ_nodes_weights(:,2) = 2._wp/((1._wp-GQ_nodes_weights(:,1)**2)*GQ_nodes_weights(:,2)**2) !! quadrature weights
    end function GQ_nodes_weights
 
-   function lgl_nodes_weights(N)
-      integer, intent(in) :: N
-      real(wp) :: lgl_nodes_weights(N,2), buf(N-2,2)
-      buf = gq_nodes_weights(N-2)
-      lgl_nodes_weights(:,1) = [-1._wp, buf(:,1), 1._wp]
-   end function lgl_nodes_weights
-
-   function lobpts(N)
-      integer, intent(in) :: N
-      real(wp) :: lobpts(N,2), buf(N-2,2)
-      buf = jacpts(N-2, 1._wp, 1._wp)
-      lobpts(1,1) = -1._wp
-      lobpts(2:N-1,1) = buf(:,1)
-      lobpts(N,1) = 1._wp
-      lobpts(:,2) = buf(:,2)
-      !lobpts(:,2) = lobpts(:,2) / (1._wp - lobpts(:,1)**2)!   w = w./(1-x.^2).';
-      !lobpts([1,n],2) =2/(N*(N - 1))
-   end function lobpts
-
-   function jacpts(N, alpha, beta)
+   pure function jacpts(N, alpha, beta)
       implicit none
       integer, intent(in) :: N
       real(wp), intent(in) :: alpha, beta
@@ -194,7 +165,7 @@ module legendre_gauss_lobatto
       jacpts(:,2) = 1._wp/((1._wp-jacpts(:,1)**2)*jacpts(:,2)**2) !Quadrature weights
    end function jacpts
 
-   function jacpts_main(N, a, b, flag)
+   pure function jacpts_main(N, a, b, flag)
       implicit none
       real(wp), parameter   :: eps = 1.e-15_wp
       integer, intent(in)   :: N
@@ -235,34 +206,20 @@ module legendre_gauss_lobatto
       jacpts_main(1:size_r,2) = grad_jacobi(N, a, b, x)
    end function jacpts_main
 
-
-   !! calculates the Legendre-Gauss-Lobatto weights, used in the quadrature
-   !! N :: is the degree of the corresponding polynomial
-   !! For example : 
-   !! N = 3 are the interpolation points for a polynomial of order = 2, needs N = 3 coefficients
-   pure function lgl_weights(N)
-      implicit none
+   pure function LGL_nodes_weights(N)
       integer, intent(in) :: N
-      integer  :: j
-      real(wp) :: lgl_weights(N), x_lgl(N)
-      x_lgl = lgl_nodes(N-1)
-      lgl_weights(1) = -1._wp
-      lgl_weights(N) = 1._wp
+      real(wp) :: LGL_nodes_weights(N,2), buf(N-2,2), tmp
+      buf = jacpts(N-2, 1._wp, 1._wp)
+      LGL_nodes_weights(1,1) = -1._wp
+      LGL_nodes_weights(2:N-1,1) = buf(:,1)
+      LGL_nodes_weights(N,1) = 1._wp
+      LGL_nodes_weights(:,2) = buf(:,2)
+      tmp = 2._wp / real(n*(n-1),wp)
+      LGL_nodes_weights([1,N],2) = tmp
       do j=2,N-1
-         lgl_weights(j) = 2._wp / (real(n*(n-1),wp) * Jacobi(N-1,0._wp, 0._wp, x_lgl(j))**2)
+         LGL_nodes_weights(j,2) = tmp / (Jacobi(N-1,0._wp, 0._wp, LGL_nodes_weights(j,1))**2)
       enddo
-   end function lgl_weights
-
-   !! calculates numerical integration from N number of samples of f(x)
-   !! integrates exactly a polynomial of order 2*N-3
-   pure function lgl_quadrature(N, f, a, b)
-      integer, intent(in) :: N
-      real(wp), intent(in) :: f(N), a, b
-      real(wp) :: lgl_quadrature, weights(N)
-      weights = lgl_weights(N)
-      lgl_quadrature = dot_product(weights(2:N-1), f(2:N-1)) + 2._wp/real(n,wp)/real(n-1,wp)*(f(1)+f(N))
-      lgl_quadrature = 0.5_wp*(b-a)*lgl_quadrature
-   end function lgl_quadrature
+   end function LGL_nodes_weights
 
    !! auxiliary routine, needed for the initial guess of lgl nodes
    pure function linspace(N, a, b)
@@ -279,27 +236,29 @@ module legendre_gauss_lobatto
       enddo
    end function linspace
 
+
    function pade_reconstruction(N, u)
       implicit none
       integer, intent(in) :: N !! N >= 8 must
       real(wp), intent(in):: u(N+1)
-      real(wp) :: f(N+1), pade_reconstruction(N+1), cites(N+1), gauss_nodes(N+1), gauss_weights(N+1)
+      real(wp) :: f(N+1), pade_reconstruction(N+1), cites(N+1), gauss_nodes(N+1), gauss_weights(N+1), buf(N+1,2)
       real(wp), allocatable :: A(:,:), rhs(:), lhs(:,:), q_tilde(:), Q(:), p_tilde(:), fbuf2(:,:)
       integer :: M, L, i, j, cut
       pade_reconstruction = 0._wp
-      cites = lgl_nodes(N)
+      buf = LGL_nodes_weights(N+1)
+      cites = buf(:,1)
       M = N - 5
       L = N - 6
       print *, N
       allocate(fbuf2(N+1,2))
-      fbuf2 = gq_nodes_weights(N+1)
-      gauss_nodes = fbuf2(:,1)
-      gauss_weights = fbuf2(:,2)
-      fbuf2 = lobpts(N+1)
-      print *, gauss_nodes
-      print *, ''
-      print *, fbuf2
-      stop 'here'
+      !fbuf2 = gq_nodes_weights(N+1)
+      !gauss_nodes = fbuf2(:,1)
+      !gauss_weights = fbuf2(:,2)
+      !fbuf2 = LGL_nodes_weights(N+1)
+      !print *, gauss_nodes
+      !print *, ''
+      !print *, fbuf2
+      !stop 'here'
       print *, M, L, N
       allocate(A(L,L+1))
       do i=M+1,M+L
@@ -375,7 +334,7 @@ module legendre_gauss_lobatto
      L = WR
     end subroutine my_dgeev
 
-    function argsort(N, x, limit)
+    pure function argsort(N, x, limit)
        implicit none
           !! input size of array, number of elements in the array to sort thEnd <= N+1
        real(wp), parameter :: tol = 1e-15
