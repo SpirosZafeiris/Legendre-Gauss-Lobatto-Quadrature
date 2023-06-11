@@ -264,17 +264,11 @@ module legendre_gauss_lobatto
       cites = buf(:,1)
       M = N - 5
       L = N - 6
-      print *, N
       allocate(fbuf2(N+1,2))
       !fbuf2 = gq_nodes_weights(N+1)
       !gauss_nodes = fbuf2(:,1)
       !gauss_weights = fbuf2(:,2)
       !fbuf2 = LGL_nodes_weights(N+1)
-      !print *, gauss_nodes
-      !print *, ''
-      !print *, fbuf2
-      !stop 'here'
-      print *, M, L, N
       allocate(A(L,L+1))
       do i=M+1,M+L
          do j=0,L
@@ -304,22 +298,41 @@ module legendre_gauss_lobatto
             Q(i) = Q(i) + q_tilde(j+1) * cites(i)**j
          enddo
       enddo
-      print *, Q
       allocate(p_tilde(M+1))
       do i=0,M
          f = Q * u * jacobi_normalized(i, 0._wp, 0._wp, cites)
          p_tilde(i+1) = GQ_quadrature(N+1, f, -1._wp, +1._wp)
       enddo
-      print *, M, L, N
-      print *, 'p_tilde'
-      print *, p_tilde
-      error stop 'here'
 
-
+      
+      pade_reconstruction = NL_expand(N+1, p_tilde, N+1, cites)
+      pade_reconstruction = pade_reconstruction / NL_expand(N+1, q_tilde, N+1, cites)
+      !pade_reconstruction = pade_expand(M+1,L+1,N+1, p_tilde, q_tilde, cites)
 
 
 
    end function pade_reconstruction
+
+   function NL_expand(N, u, C, x)
+      implicit none
+      integer, intent(in) :: N, C
+      real(wp), intent(in) :: u(N), x(C)
+      real(wp) :: NL_expand(C)
+      integer :: i
+      NL_expand = 0._wp
+      do i=1,C
+         NL_expand(1:C) = NL_expand(1:C) + u(i)*jacobi_normalized(i-1, 0._wp, 0._wp, x)
+      enddo
+   end function NL_expand
+
+   function pade_expand(M, L, C, p, q, x)
+      implicit none
+      integer, intent(in) :: M, L, C
+      real(wp), intent(in):: p(M), q(L), x(C)
+      real(wp) :: pade_expand(C)
+      pade_expand = 0._wp
+      pade_expand = NL_expand(M, p, C, x) / NL_expand(L, q, C, x)
+   end function pade_expand
 
    subroutine my_dgesv(N,A, B)
       implicit none
@@ -347,44 +360,56 @@ module legendre_gauss_lobatto
       integer :: LDA, LDVL, LDVR, LWMAX, info, lwork
       LDA = N; LDVL = N; LDVR = N
       LWMAX = 1000
-     call dgeev( 'Vectors', 'Vectors', N, A, LDA, WR, WI, VL, LDVL, VR, LDVR, WORK, LWORK, INFO )
-     L = WR
-    end subroutine my_dgeev
+      call dgeev( 'Vectors', 'Vectors', N, A, LDA, WR, WI, VL, LDVL, VR, LDVR, WORK, LWORK, INFO )
+      L = WR
+   end subroutine my_dgeev
 
-    pure function argsort(N, x, limit)
-       implicit none
-          !! input size of array, number of elements in the array to sort thEnd <= N+1
-       real(wp), parameter :: tol = 1e-15
-       integer , intent(in):: N
-       integer , intent(in), optional :: limit
-       real(wp), intent(in):: x(N) !! input array
-       integer  :: argsort(N) !! output array of sorted argsortices
-       real(wp) :: tmp, y(N)
-       integer  :: i,j,tmpi, thEnd
-       if (.not.present(limit)) then
-          thEnd = N+1
-       else
-          thEnd = limit
-       endif
-       Y = X
-       do i=1,N
-          argsort(i) = i
-       enddo
-       do i=1,N-1
-          do j=i+1,N
-             if ((Y(j)-Y(i)).lt.(-tol)) then
-                tmpi = argsort(j)  !
-                argsort(j) = argsort(i)! swap indices
-                argsort(i) = tmpi  !
-                tmp  = Y(j)    !
-                Y(j) = Y(i)    ! swap values
-                Y(i) = tmp     !
-             endif
-          enddo
-          if (i.eq.thEnd) exit
-       enddo
-    end function argsort
+   pure function argsort(N, x, limit)
+      implicit none
+         !! input size of array, number of elements in the array to sort thEnd <= N+1
+      real(wp), parameter :: tol = 1e-15
+      integer , intent(in):: N
+      integer , intent(in), optional :: limit
+      real(wp), intent(in):: x(N) !! input array
+      integer  :: argsort(N) !! output array of sorted argsortices
+      real(wp) :: tmp, y(N)
+      integer  :: i,j,tmpi, thEnd
+      if (.not.present(limit)) then
+         thEnd = N+1
+      else
+         thEnd = limit
+      endif
+      Y = X
+      do i=1,N
+         argsort(i) = i
+      enddo
+      do i=1,N-1
+         do j=i+1,N
+            if ((Y(j)-Y(i)).lt.(-tol)) then
+               tmpi = argsort(j)  !
+               argsort(j) = argsort(i)! swap indices
+               argsort(i) = tmpi  !
+               tmp  = Y(j)    !
+               Y(j) = Y(i)    ! swap values
+               Y(i) = tmp     !
+            endif
+         enddo
+         if (i.eq.thEnd) exit
+      enddo
+   end function argsort
 end module legendre_gauss_lobatto
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
