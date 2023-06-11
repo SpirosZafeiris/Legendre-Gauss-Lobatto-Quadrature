@@ -101,7 +101,7 @@ module legendre_gauss_lobatto
       theta = pi*real(4*k-1,wp)/real(4*n+2,wp)
       allocate(x(size_k), Pm2(size_k), Pm1(size_k), P(size_k), PP(size_k), PPm1(size_k), PPm2(size_k), dx(size_k))
       x = (1._wp - real(N-1,wp)/real(8*N**3,wp) - 1._wp/real(384*N**4,wp)*(39._wp-28._wp/sin(theta)**2) ) * cos(theta)
-      ! Initialise:
+      ! Initialise
       Pm2 = 1._wp
       Pm1 = x
       PPm2 = 0._wp
@@ -109,7 +109,7 @@ module legendre_gauss_lobatto
       dx = 1.e+14_wp
       counter = 0
 
-      ! Loop until convergence:
+      ! Loop until convergence
       do while ( maxval(abs(dx)) > eps .and. counter < 10 )
          counter = counter + 1
          do kk = 1,N-1
@@ -120,18 +120,18 @@ module legendre_gauss_lobatto
             PPm2 = PPm1
             PPm1 = PP
          enddo
-         ! Newton step:
+         ! Newton step
          dx = -P/PP;
-         ! Newton update:
+         ! Newton update
          x = x + dx;
-         ! Reinitialise:
+         ! Reinitialise
          Pm2 = 1._wp
          Pm1 = x
          PPm2 = 0._wp
          PPm1 = 1._wp
       end do
    !
-   ! Once more for derivatives:
+   ! Once more for derivatives
    do kk = 1,N-1
       P = ( (2*kk+1)*Pm1*x - kk*Pm2 ) / real(kk+1,wp)
       Pm2 = Pm1
@@ -176,9 +176,8 @@ module legendre_gauss_lobatto
       real(wp) :: jacpts_main(N,2)
       integer :: size_r, l
       jacpts_main = 0._wp
-      !%REC_MAIN   Jacobi polynomial recurrence relation.
 
-      !% Asymptotic formula (WKB) - only positive x.
+      ! Asymptotic formula (WKB) - only positive x.
       if (flag) then
          size_r = ceiling(real(N,wp)/real(2,wp))
       else
@@ -190,13 +189,12 @@ module legendre_gauss_lobatto
       T = C + 1._wp/(real(2*n,wp)+a+b+1._wp)**2 * ((0.25_wp-a**2)*cotan(0.5_wp*C) - (0.25_wp-b**2)*tan(0.5_wp*C))
       x = cos(T)
    
-      !% Initialise:
+      ! Initialise
       dx = 1.e+12_wp; 
       l = 0;
-      !% Loop until convergence:
+      ! Loop until convergence
       do while ( (maxval(abs(dx)) > eps) .and. (l < 10) )
          l = l + 1;
-         ![P, PP] = eval_Jac(x, n, a, b);
          P  = jacobi(N, a, b, x)
          PP = grad_jacobi(N, a, b, x)
          dx = -P/PP
@@ -270,6 +268,3 @@ module legendre_gauss_lobatto
       enddo
    end function argsort
 end module legendre_gauss_lobatto
-
-
-
