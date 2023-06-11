@@ -78,6 +78,7 @@ module legendre_gauss_lobatto
    !! calculates numerical integration from N number of samples of f(x)
    !! integrates exactly a polynomial of order 2*N-3
    pure function LGL_quadrature(N, f, a, b)
+      implicit none
       integer, intent(in) :: N
       real(wp), intent(in) :: f(N), a, b
       real(wp) :: lgl_quadrature, weights(N)
@@ -88,7 +89,18 @@ module legendre_gauss_lobatto
       lgl_quadrature = 0.5_wp*(b-a)*lgl_quadrature
    end function LGL_quadrature
 
+   pure function GQ_quadrature(N, f, a, b)
+      implicit none
+      integer, intent(in) :: N
+      real(wp), intent(in) :: f(N), a, b
+      real(wp) :: GQ_quadrature, buf(N,2)
+      buf = GQ_nodes_weights(N)
+      GQ_quadrature = dot_product(buf(:,2), f)
+      GQ_quadrature = 0.5_wp*(b-a)*GQ_quadrature
+   end function GQ_quadrature
+
    pure function GQ_nodes_weights(N)
+      implicit none
       real(wp), parameter :: eps = 1.e-15_wp
       integer, intent(in) :: N
       real(wp) :: GQ_nodes_weights(N,2)
@@ -207,13 +219,15 @@ module legendre_gauss_lobatto
    end function jacpts_main
 
    pure function LGL_nodes_weights(N)
+      implicit none
       integer, intent(in) :: N
       real(wp) :: LGL_nodes_weights(N,2), buf(N-2,2), tmp
+      integer :: j
       buf = jacpts(N-2, 1._wp, 1._wp)
       LGL_nodes_weights(1,1) = -1._wp
       LGL_nodes_weights(2:N-1,1) = buf(:,1)
       LGL_nodes_weights(N,1) = 1._wp
-      LGL_nodes_weights(:,2) = buf(:,2)
+      LGL_nodes_weights(2:N-1,2) = buf(:,2)
       tmp = 2._wp / real(n*(n-1),wp)
       LGL_nodes_weights([1,N],2) = tmp
       do j=2,N-1
@@ -241,11 +255,12 @@ module legendre_gauss_lobatto
       implicit none
       integer, intent(in) :: N !! N >= 8 must
       real(wp), intent(in):: u(N+1)
-      real(wp) :: f(N+1), pade_reconstruction(N+1), cites(N+1), gauss_nodes(N+1), gauss_weights(N+1), buf(N+1,2)
+      real(wp) :: f(N+1), pade_reconstruction(N+1), cites(N+1), gauss_nodes(N+1)
+      real(wp) :: gauss_weights(N+1), buf(N+1,2)
       real(wp), allocatable :: A(:,:), rhs(:), lhs(:,:), q_tilde(:), Q(:), p_tilde(:), fbuf2(:,:)
       integer :: M, L, i, j, cut
       pade_reconstruction = 0._wp
-      buf = LGL_nodes_weights(N+1)
+      buf = GQ_nodes_weights(N+1)
       cites = buf(:,1)
       M = N - 5
       L = N - 6
@@ -264,11 +279,11 @@ module legendre_gauss_lobatto
       do i=M+1,M+L
          do j=0,L
             f = u * cites**j * jacobi_normalized(i, 0._wp, 0._wp, cites)
-            A(i-M,j+1) = lgl_quadrature(N, f, -1._wp, 1._wp)
+            A(i-M,j+1) = GQ_quadrature(N, f, -1._wp, 1._wp)
          enddo
       enddo
       allocate(rhs(L))
-      lhs = -1e+2-1e+23
+      lhs = 0._wp
       cut = 3
       rhs = -A(:,cut)
       allocate(lhs(L,L))
@@ -277,7 +292,7 @@ module legendre_gauss_lobatto
       deallocate(A)
       call my_dgesv(L, lhs, rhs)
       allocate(q_tilde(L+1))
-      q_tilde(1) = 1._wp
+      q_tilde(1) = +1._wp
       q_tilde(2:L+1) = rhs
       deallocate(lhs, rhs)
       !print *, q_tilde
@@ -291,12 +306,14 @@ module legendre_gauss_lobatto
       enddo
       print *, Q
       allocate(p_tilde(M+1))
+      do i=0,M
+         f = Q * u * jacobi_normalized(i, 0._wp, 0._wp, cites)
+         p_tilde(i+1) = GQ_quadrature(N+1, f, -1._wp, +1._wp)
+      enddo
       print *, M, L, N
+      print *, 'p_tilde'
+      print *, p_tilde
       error stop 'here'
-      !do i=0,M
-      !   f = Q * u * jacobi_normalized(i, 0._wp, 0._wp, cites)
-      !   p_dilde(i+1) = lgl_quadrature(
-      !enddo
 
 
 

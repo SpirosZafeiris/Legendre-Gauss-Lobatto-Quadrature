@@ -4,7 +4,7 @@ program main
    integer, parameter :: N = 101
    integer, parameter :: degree = 12
    double precision :: x(N), y(N), cites(degree),weights(degree),fa(degree), num_integral,integral
-   double precision :: cites_physical(degree), x_a, x_b, pade(degree), buffer(degree,2)
+   double precision :: cites_physical(degree), x_a, x_b, pade(degree+1), buffer(degree,2)
    !! test functions
    x = linspace(N=N, a=0.d0, b=1.d0)
    y = jacobi(N=degree, alpha=1.d0, beta=1.d0, x=x)
