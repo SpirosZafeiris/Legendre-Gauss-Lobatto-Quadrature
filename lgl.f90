@@ -78,6 +78,7 @@ module legendre_gauss_lobatto
    !! calculates numerical integration from N number of samples of f(x)
    !! integrates exactly a polynomial of order 2*N-3
    pure function LGL_quadrature(N, f, a, b)
+      implicit none
       integer, intent(in) :: N
       real(wp), intent(in) :: f(N), a, b
       real(wp) :: lgl_quadrature, weights(N)
@@ -89,6 +90,7 @@ module legendre_gauss_lobatto
    end function LGL_quadrature
 
    pure function GQ_nodes_weights(N)
+      implicit none
       real(wp), parameter :: eps = 1.e-15_wp
       integer, intent(in) :: N
       real(wp) :: GQ_nodes_weights(N,2)
@@ -205,13 +207,15 @@ module legendre_gauss_lobatto
    end function jacpts_main
 
    pure function LGL_nodes_weights(N)
+      implicit none
       integer, intent(in) :: N
       real(wp) :: LGL_nodes_weights(N,2), buf(N-2,2), tmp
+      integer :: j
       buf = jacpts(N-2, 1._wp, 1._wp)
       LGL_nodes_weights(1,1) = -1._wp
       LGL_nodes_weights(2:N-1,1) = buf(:,1)
       LGL_nodes_weights(N,1) = 1._wp
-      LGL_nodes_weights(:,2) = buf(:,2)
+      LGL_nodes_weights(2:N-1,2) = buf(:,2)
       tmp = 2._wp / real(n*(n-1),wp)
       LGL_nodes_weights([1,N],2) = tmp
       do j=2,N-1
