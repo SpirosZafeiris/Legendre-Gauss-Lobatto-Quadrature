@@ -257,18 +257,13 @@ module legendre_gauss_lobatto
       real(wp), intent(in):: u(N+1)
       real(wp) :: f(N+1), pade_reconstruction(N+1), cites(N+1), gauss_nodes(N+1)
       real(wp) :: gauss_weights(N+1), buf(N+1,2)
-      real(wp), allocatable :: A(:,:), rhs(:), lhs(:,:), q_tilde(:), Q(:), p_tilde(:), fbuf2(:,:)
+      real(wp), allocatable :: A(:,:), rhs(:), lhs(:,:), q_tilde(:), Q(:), p_tilde(:)
       integer :: M, L, i, j, cut
       pade_reconstruction = 0._wp
       buf = GQ_nodes_weights(N+1)
       cites = buf(:,1)
-      M = N - 5
-      L = N - 6
-      allocate(fbuf2(N+1,2))
-      !fbuf2 = gq_nodes_weights(N+1)
-      !gauss_nodes = fbuf2(:,1)
-      !gauss_weights = fbuf2(:,2)
-      !fbuf2 = LGL_nodes_weights(N+1)
+      L = 4
+      M = N - L
       allocate(A(L,L+1))
       do i=M+1,M+L
          do j=0,L
@@ -278,7 +273,7 @@ module legendre_gauss_lobatto
       enddo
       allocate(rhs(L))
       lhs = 0._wp
-      cut = 3
+      cut = 1
       rhs = -A(:,cut)
       allocate(lhs(L,L))
       lhs(:,:cut-1) = A(:,:cut-1)
@@ -288,11 +283,11 @@ module legendre_gauss_lobatto
       allocate(q_tilde(L+1))
       q_tilde(1) = +1._wp
       q_tilde(2:L+1) = rhs
+      q_tilde = q_tilde / maxval(q_tilde)
       deallocate(lhs, rhs)
-      !print *, q_tilde
       allocate(Q(N+1))
       ! calculate Q
-      do i=1,N ! for every calculation point
+      do i=1,N+1 ! for every calculation point
          Q(i) = 0._wp
          do j=0,L ! add every monomial of the expansion
             Q(i) = Q(i) + q_tilde(j+1) * cites(i)**j
@@ -304,13 +299,7 @@ module legendre_gauss_lobatto
          p_tilde(i+1) = GQ_quadrature(N+1, f, -1._wp, +1._wp)
       enddo
 
-      
-      pade_reconstruction = NL_expand(N+1, p_tilde, N+1, cites)
-      pade_reconstruction = pade_reconstruction / NL_expand(N+1, q_tilde, N+1, cites)
-      !pade_reconstruction = pade_expand(M+1,L+1,N+1, p_tilde, q_tilde, cites)
-
-
-
+      pade_reconstruction = NL_expand(N+1, p_tilde, N+1, cites) / Q
    end function pade_reconstruction
 
    function NL_expand(N, u, C, x)
