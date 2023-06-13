@@ -309,7 +309,7 @@ module legendre_gauss_lobatto
       real(wp) :: NL_expand(C)
       integer :: i
       NL_expand = 0._wp
-      do i=1,C
+      do i=1,N
          NL_expand(1:C) = NL_expand(1:C) + u(i)*jacobi_normalized(i-1, 0._wp, 0._wp, x)
       enddo
    end function NL_expand
